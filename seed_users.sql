@@ -1,0 +1,10 @@
+-- Добавьте сюда участников. telegram_id обязателен, username можно оставить null.
+-- Пример:
+-- insert into public.bot_users (telegram_id, telegram_username, full_name)
+-- values
+--   (111111111, 'student1', 'Имя 1'),
+--   (222222222, 'student2', 'Имя 2')
+-- on conflict (telegram_id) do update
+-- set telegram_username = excluded.telegram_username,
+--     full_name = excluded.full_name,
+--     is_active = true;
