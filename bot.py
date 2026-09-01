@@ -213,7 +213,7 @@ def menu_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="🏆 Рейтинг дружины",
+                    text="🏆 Рейтинг кайфариков",
                     callback_data="rating",
                 )
             ],
@@ -227,7 +227,7 @@ def back_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⬅️ Вернуться в лагерь",
+                    text="⬅️ Вернуться в меню",
                     callback_data="menu",
                 )
             ]
@@ -270,7 +270,7 @@ def day_keyboard(
     buttons.append(
         [
             InlineKeyboardButton(
-                text="🛡 Завершить поход",
+                text="✅ Завершить день",
                 callback_data="menu",
             )
         ]
@@ -296,15 +296,12 @@ def month_calendar_kb(
     )
 
     if month == 12:
-
         next_month = date(
             year + 1,
             1,
             1,
         )
-
     else:
-
         next_month = date(
             year,
             month + 1,
@@ -365,7 +362,6 @@ def month_calendar_kb(
     ]
 
     while len(cells) % 7:
-
         cells.append(
             None
         )
@@ -456,7 +452,7 @@ def month_calendar_kb(
 
     nav.append(
         InlineKeyboardButton(
-            text="🏕 В лагерь",
+            text="⬅️ В меню",
             callback_data="menu",
         )
     )
@@ -687,9 +683,7 @@ async def safe_edit(
         pass
 
     try:
-
         await callback.message.delete()
-
     except Exception:
         pass
 
@@ -714,7 +708,6 @@ async def show_menu(
         callback,
         (
             "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
-            "Дружина в сборе.\n\n"
             "Выбирай свой следующий ход:"
         ),
         menu_kb(),
@@ -754,9 +747,9 @@ async def show_day(
     )
 
     text = (
-        f"⚔️ <b>Поход за "
+        f"⚔️ <b>День "
         f"{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
-        f"Добыто баллов: "
+        f"Набрано баллов: "
         f"<b>{fmt_points(points)}</b>\n\n"
         "Отмечай выполненные нормативы.\n"
         "Каждое изменение сохраняется сразу."
@@ -800,7 +793,7 @@ async def start(
         "🛡 <b>Держи строй.</b>\n"
         "⚔️ <b>Выполняй нормативы.</b>\n"
         "🏆 <b>Поднимайся в рейтинге.</b>\n\n"
-        f"Добро пожаловать в дружину, "
+        f"Добро пожаловать, "
         f"<b>{user['full_name']}</b>.\n\n"
         "Да начнётся битва!"
     )
@@ -811,9 +804,7 @@ async def start(
     )
 
     try:
-
         await message.delete()
-
     except Exception:
         pass
 
@@ -867,9 +858,9 @@ async def admin(
 
     await message.answer(
         (
-            "👑 <b>Ярл дружины</b>"
+            "👑 <b>Админка</b>"
             "\n\n"
-            "Воинов в Лиге: "
+            "Участников: "
             f"<b>{users.count or 0}</b>"
             "\n"
             "Заполненных дней: "
@@ -878,9 +869,7 @@ async def admin(
     )
 
     try:
-
         await message.delete()
-
     except Exception:
         pass
 
@@ -947,7 +936,7 @@ async def choose_date(
 
     await safe_edit(
         callback,
-        "📜 <b>Выбери день прошлого похода</b>",
+        "📜 <b>Выбери день</b>",
         month_calendar_kb(
             current_day.year,
             current_day.month,
@@ -1008,7 +997,7 @@ async def calendar_nav(
 
     await safe_edit(
         callback,
-        "📜 <b>Выбери день прошлого похода</b>",
+        "📜 <b>Выбери день</b>",
         month_calendar_kb(
             year,
             month,
@@ -1119,11 +1108,8 @@ async def toggle_norm(
     )
 
     if updated_rows:
-
         row = updated_rows[0]
-
     else:
-
         row[field] = new_value
 
     points = calc_points(
@@ -1131,14 +1117,14 @@ async def toggle_norm(
     )
 
     await callback.answer(
-        "⚔️ Записано в летопись"
+        "✅ Сохранено"
     )
 
     text = (
-        f"⚔️ <b>Поход за "
+        f"⚔️ <b>День "
         f"{norm_date.strftime('%d.%m.%Y')}</b>"
         "\n\n"
-        "Добыто баллов: "
+        "Набрано баллов: "
         f"<b>{fmt_points(points)}</b>"
         "\n\n"
         "Отмечай выполненные нормативы.\n"
@@ -1255,13 +1241,10 @@ async def rating(
             break
 
     lines = [
-        "🏆 <b>РЕЙТИНГ ДРУЖИНЫ</b>",
+        "🏆 <b>РЕЙТИНГ КАЙФАРИКОВ</b>",
         "",
     ]
 
-    # Всегда показываем ровно 10 мест.
-    # Даже если реальных участников меньше,
-    # пустые позиции выглядят как скрытые игроки с 0 баллов.
     for place in range(
         1,
         11,
@@ -1310,8 +1293,6 @@ async def rating(
 
         else:
 
-            # Не раскрываем,
-            # что участника на этом месте пока нет.
             shown_name = "Скрыто"
             score_text = "0"
 
@@ -1425,9 +1406,7 @@ async def cleanup_user_messages(
 ):
 
     try:
-
         await message.delete()
-
     except Exception:
         pass
 
