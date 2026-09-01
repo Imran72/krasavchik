@@ -190,6 +190,33 @@ def fmt_points(
     return f"{value:.1f}"
 
 
+def telegram_full_name(
+    tg_user,
+) -> str:
+
+    first_name = (
+        tg_user.first_name
+        or ""
+    ).strip()
+
+    last_name = (
+        tg_user.last_name
+        or ""
+    ).strip()
+
+    full_name = (
+        f"{first_name} {last_name}"
+    ).strip()
+
+    if full_name:
+        return full_name
+
+    if tg_user.username:
+        return tg_user.username
+
+    return f"Участник {tg_user.id}"
+
+
 # =========================================================
 # КЛАВИАТУРЫ
 # =========================================================
@@ -200,19 +227,19 @@ def menu_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✅ Заполнить сегодня",
+                    text="⚔️ Выполнить нормативы сегодня",
                     callback_data="fill_today",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📅 Заполнить другой день",
+                    text="📜 Заполнить другой день",
                     callback_data="choose_date",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="🏆 Рейтинг",
+                    text="🏆 Рейтинг дружины",
                     callback_data="rating",
                 )
             ],
@@ -226,7 +253,7 @@ def back_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⬅️ Назад",
+                    text="⬅️ Вернуться в лагерь",
                     callback_data="menu",
                 )
             ]
@@ -273,7 +300,7 @@ def day_keyboard(
     buttons.append(
         [
             InlineKeyboardButton(
-                text="🏁 Завершить",
+                text="🛡 Завершить поход",
                 callback_data="menu",
             )
         ]
@@ -459,7 +486,7 @@ def month_calendar_kb(
 
     nav.append(
         InlineKeyboardButton(
-            text="⬅️ Меню",
+            text="🏕 В лагерь",
             callback_data="menu",
         )
     )
@@ -490,7 +517,7 @@ def month_calendar_kb(
 
 
 # =========================================================
-# БАЗА
+# БАЗА — ПОЛЬЗОВАТЕЛИ
 # =========================================================
 
 def get_user(
@@ -505,10 +532,6 @@ def get_user(
             "telegram_id",
             telegram_id,
         )
-        .eq(
-            "is_active",
-            True,
-        )
         .execute()
         .data
     )
@@ -518,6 +541,105 @@ def get_user(
 
     return rows[0]
 
+
+def get_or_create_user(
+    tg_user,
+) -> dict:
+
+    existing = get_user(
+        tg_user.id
+    )
+
+    username = (
+        tg_user.username
+        if tg_user.username
+        else None
+    )
+
+    full_name = telegram_full_name(
+        tg_user
+    )
+
+    if existing:
+
+        updates = {}
+
+        if (
+            existing.get(
+                "telegram_username"
+            )
+            != username
+        ):
+            updates[
+                "telegram_username"
+            ] = username
+
+        if (
+            existing.get(
+                "full_name"
+            )
+            != full_name
+        ):
+            updates[
+                "full_name"
+            ] = full_name
+
+        if not existing.get(
+            "is_active",
+            True,
+        ):
+            updates[
+                "is_active"
+            ] = True
+
+        if updates:
+
+            updated = (
+                supabase
+                .table("bot_users")
+                .update(
+                    updates
+                )
+                .eq(
+                    "id",
+                    existing["id"],
+                )
+                .execute()
+                .data
+            )
+
+            if updated:
+                return updated[0]
+
+        return existing
+
+    payload = {
+        "telegram_id": tg_user.id,
+        "telegram_username": username,
+        "full_name": full_name,
+        "is_active": True,
+        "is_admin": (
+            tg_user.id
+            == ADMIN_TELEGRAM_ID
+        ),
+    }
+
+    created = (
+        supabase
+        .table("bot_users")
+        .insert(
+            payload
+        )
+        .execute()
+        .data
+    )
+
+    return created[0]
+
+
+# =========================================================
+# БАЗА — НОРМАТИВЫ
+# =========================================================
 
 def get_or_create_day(
     user_id: int,
@@ -621,8 +743,9 @@ async def show_menu(
     await safe_edit(
         callback,
         (
-            "🏠 <b>Конкурс общежития</b>\n\n"
-            "Выберите действие:"
+            "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
+            "Дружина в сборе.\n\n"
+            "Выбирай свой следующий ход:"
         ),
         menu_kb(),
     )
@@ -633,18 +756,9 @@ async def show_day(
     norm_date: date,
 ):
 
-    user = get_user(
-        callback.from_user.id
+    user = get_or_create_user(
+        callback.from_user
     )
-
-    if not user:
-
-        await safe_edit(
-            callback,
-            "⛔ У вас нет доступа к боту.",
-        )
-
-        return
 
     if (
         norm_date
@@ -670,15 +784,12 @@ async def show_day(
     )
 
     text = (
-        f"📅 <b>"
-        f"{norm_date.strftime('%d.%m.%Y')}"
-        f"</b>\n"
-        f"Баллы за день: "
-        f"<b>{fmt_points(points)}</b>"
-        f"\n\n"
-        "Нажимайте на нормативы, "
-        "чтобы включать или выключать их. "
-        "Изменения сохраняются сразу."
+        f"⚔️ <b>Поход за "
+        f"{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
+        f"Добыто баллов: "
+        f"<b>{fmt_points(points)}</b>\n\n"
+        "Отмечай выполненные нормативы.\n"
+        "Каждое изменение сохраняется сразу."
     )
 
     await safe_edit(
@@ -702,30 +813,30 @@ async def start(
     message: Message,
 ):
 
-    user = get_user(
-        message.from_user.id
+    user = get_or_create_user(
+        message.from_user
     )
 
-    if not user:
-
-        await message.answer(
-            "⛔ У вас нет доступа к боту. "
-            "Обратитесь к администратору."
-        )
-
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
-        return
+    greeting = (
+        "⚔️ <b>ВОУ! ПРИВЕТСТВУЮ ТЕБЯ "
+        "В ЛИГЕ КРАСАВЧИКОВ.</b>\n\n"
+        "Здесь собираются те, кто не ищет "
+        "лёгких путей.\n\n"
+        "Каждый день — новый поход.\n"
+        "Каждый выполненный норматив — "
+        "балл в твою копилку.\n"
+        "А в конце лучшие воины дружины "
+        "заберут свою добычу 💰\n\n"
+        "🛡 <b>Держи строй.</b>\n"
+        "⚔️ <b>Выполняй нормативы.</b>\n"
+        "🏆 <b>Поднимайся в рейтинге.</b>\n\n"
+        f"Добро пожаловать в дружину, "
+        f"<b>{user['full_name']}</b>.\n\n"
+        "Да начнётся битва!"
+    )
 
     await message.answer(
-        (
-            "🏠 <b>Конкурс общежития</b>"
-            "\n\n"
-            "Выберите действие:"
-        ),
+        greeting,
         reply_markup=menu_kb(),
     )
 
@@ -786,12 +897,12 @@ async def admin(
 
     await message.answer(
         (
-            "👑 <b>Админ</b>"
+            "👑 <b>Ярл дружины</b>"
             "\n\n"
-            "Активных участников: "
+            "Воинов в Лиге: "
             f"<b>{users.count or 0}</b>"
             "\n"
-            "Записей по дням: "
+            "Заполненных дней: "
             f"<b>{norms.count or 0}</b>"
         )
     )
@@ -814,6 +925,10 @@ async def admin(
 async def menu(
     callback: CallbackQuery,
 ):
+
+    get_or_create_user(
+        callback.from_user
+    )
 
     await callback.answer()
 
@@ -852,13 +967,17 @@ async def choose_date(
     callback: CallbackQuery,
 ):
 
+    get_or_create_user(
+        callback.from_user
+    )
+
     await callback.answer()
 
     current_day = today()
 
     await safe_edit(
         callback,
-        "📅 <b>Выберите дату</b>",
+        "📜 <b>Выбери день прошлого похода</b>",
         month_calendar_kb(
             current_day.year,
             current_day.month,
@@ -919,7 +1038,7 @@ async def calendar_nav(
 
     await safe_edit(
         callback,
-        "📅 <b>Выберите дату</b>",
+        "📜 <b>Выбери день прошлого похода</b>",
         month_calendar_kb(
             year,
             month,
@@ -966,18 +1085,9 @@ async def toggle_norm(
     callback: CallbackQuery,
 ):
 
-    user = get_user(
-        callback.from_user.id
+    user = get_or_create_user(
+        callback.from_user
     )
-
-    if not user:
-
-        await callback.answer(
-            "Нет доступа",
-            show_alert=True,
-        )
-
-        return
 
     _, date_str, field = (
         callback.data.split(
@@ -1051,20 +1161,18 @@ async def toggle_norm(
     )
 
     await callback.answer(
-        "Сохранено"
+        "⚔️ Записано в летопись"
     )
 
     text = (
-        f"📅 <b>"
-        f"{norm_date.strftime('%d.%m.%Y')}"
-        f"</b>"
-        "\n"
-        "Баллы за день: "
+        f"⚔️ <b>Поход за "
+        f"{norm_date.strftime('%d.%m.%Y')}</b>"
+        "\n\n"
+        "Добыто баллов: "
         f"<b>{fmt_points(points)}</b>"
         "\n\n"
-        "Нажимайте на нормативы, "
-        "чтобы включать или выключать их. "
-        "Изменения сохраняются сразу."
+        "Отмечай выполненные нормативы.\n"
+        "Каждое изменение сохраняется сразу."
     )
 
     await safe_edit(
@@ -1090,18 +1198,9 @@ async def rating(
 
     await callback.answer()
 
-    current_user = get_user(
-        callback.from_user.id
+    current_user = get_or_create_user(
+        callback.from_user
     )
-
-    if not current_user:
-
-        await safe_edit(
-            callback,
-            "⛔ У вас нет доступа к боту.",
-        )
-
-        return
 
     users = (
         supabase
@@ -1167,7 +1266,7 @@ async def rating(
     )
 
     lines = [
-        "🏆 <b>Рейтинг на текущий момент</b>",
+        "🏆 <b>РЕЙТИНГ ДРУЖИНЫ</b>",
         "",
     ]
 
@@ -1202,7 +1301,8 @@ async def rating(
         ):
 
             shown_name = (
-                user["full_name"]
+                "⚔️ "
+                + user["full_name"]
             )
 
         else:
@@ -1251,14 +1351,14 @@ async def rating(
                 f"{place_label} "
                 f"{shown_name} — "
                 f"<b>{score_text}</b> б. — "
-                f"{prize_text} ₽"
+                f"💰 {prize_text} ₽"
             )
         )
 
     if not ranked:
 
         lines.append(
-            "Пока нет участников."
+            "Пока дружина пуста."
         )
 
     lines.append("")
@@ -1266,8 +1366,12 @@ async def rating(
     if my_place is not None:
 
         lines.append(
+            "⚔️ <b>ТВОЯ ПОЗИЦИЯ</b>"
+        )
+
+        lines.append(
             (
-                "Ваше место: "
+                "Место: "
                 f"<b>{my_place} "
                 f"из {len(ranked)}</b>"
             )
@@ -1275,7 +1379,7 @@ async def rating(
 
         lines.append(
             (
-                "Ваши баллы: "
+                "Баллы: "
                 f"<b>{fmt_points(my_score)}</b>"
             )
         )
@@ -1299,7 +1403,7 @@ async def rating(
 
             lines.append(
                 (
-                    "До 10-го места: "
+                    "До попадания в десятку: "
                     f"<b>{fmt_points(gap)}</b> б."
                 )
             )
