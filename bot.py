@@ -76,51 +76,15 @@ PRIZES = {
 # =========================================================
 
 NORM_FIELDS = [
-    (
-        "morning_sport",
-        "Утренний совместный спорт",
-        1.0,
-    ),
-    (
-        "night_sport",
-        "Ночной совместный спорт",
-        1.0,
-    ),
-    (
-        "breakfast",
-        "Совместный завтрак",
-        1.0,
-    ),
-    (
-        "dinner",
-        "Совместный ужин",
-        1.0,
-    ),
-    (
-        "cooked_breakfast",
-        "Приготовил завтрак",
-        0.5,
-    ),
-    (
-        "cooked_dinner",
-        "Приготовил ужин",
-        0.5,
-    ),
-    (
-        "story_speaker",
-        "Проведение рассказа",
-        1.0,
-    ),
-    (
-        "story_listener",
-        "Прослушивание рассказа",
-        1.0,
-    ),
-    (
-        "academic_hour",
-        "Академический час",
-        1.0,
-    ),
+    ("morning_sport", "Утренний совместный спорт", 1.0),
+    ("night_sport", "Ночной совместный спорт", 1.0),
+    ("breakfast", "Совместный завтрак", 1.0),
+    ("dinner", "Совместный ужин", 1.0),
+    ("cooked_breakfast", "Приготовил завтрак", 0.5),
+    ("cooked_dinner", "Приготовил ужин", 0.5),
+    ("story_speaker", "Проведение рассказа", 1.0),
+    ("story_listener", "Прослушивание рассказа", 1.0),
+    ("academic_hour", "Академический час", 1.0),
 ]
 
 NORM_KEYS = {
@@ -155,17 +119,13 @@ def today() -> date:
     ).date()
 
 
-def calc_points(
-    row: dict,
-) -> float:
+def calc_points(row: dict) -> float:
 
     total = 0.0
 
     for key, _, points in NORM_FIELDS:
 
-        if bool(
-            row.get(key)
-        ):
+        if bool(row.get(key)):
             total += points
 
     return round(
@@ -174,9 +134,7 @@ def calc_points(
     )
 
 
-def fmt_points(
-    value,
-) -> str:
+def fmt_points(value) -> str:
 
     value = float(
         value or 0
@@ -215,6 +173,22 @@ def telegram_full_name(
         return tg_user.username
 
     return f"Участник {tg_user.id}"
+
+
+def place_label(
+    place: int,
+) -> str:
+
+    if place == 1:
+        return "🥇"
+
+    if place == 2:
+        return "🥈"
+
+    if place == 3:
+        return "🥉"
+
+    return f"{place}."
 
 
 # =========================================================
@@ -268,11 +242,7 @@ def day_keyboard(
 
     buttons = []
 
-    for (
-        key,
-        label,
-        points,
-    ) in NORM_FIELDS:
+    for key, label, points in NORM_FIELDS:
 
         checked = (
             "✅"
@@ -1265,11 +1235,6 @@ async def rating(
         ),
     )
 
-    lines = [
-        "🏆 <b>РЕЙТИНГ ДРУЖИНЫ</b>",
-        "",
-    ]
-
     my_place = None
 
     my_score = score_by_user.get(
@@ -1277,10 +1242,7 @@ async def rating(
         0.0,
     )
 
-    for (
-        index,
-        user,
-    ) in enumerate(
+    for index, user in enumerate(
         ranked,
         start=1,
     ):
@@ -1289,48 +1251,25 @@ async def rating(
             user["id"]
             == current_user["id"]
         ):
-
             my_place = index
+            break
 
-        if index > 10:
-            continue
+    lines = [
+        "🏆 <b>РЕЙТИНГ ДРУЖИНЫ</b>",
+        "",
+    ]
 
-        if (
-            user["id"]
-            == current_user["id"]
-        ):
+    # Всегда показываем ровно 10 мест.
+    # Даже если реальных участников меньше,
+    # пустые позиции выглядят как скрытые игроки с 0 баллов.
+    for place in range(
+        1,
+        11,
+    ):
 
-            shown_name = (
-                "⚔️ "
-                + user["full_name"]
-            )
-
-        else:
-
-            shown_name = "Скрыто"
-
-        prize = PRIZES.get(
-            index,
-            0,
-        )
-
-        if index == 1:
-
-            place_label = "🥇"
-
-        elif index == 2:
-
-            place_label = "🥈"
-
-        elif index == 3:
-
-            place_label = "🥉"
-
-        else:
-
-            place_label = (
-                f"{index}."
-            )
+        prize = PRIZES[
+            place
+        ]
 
         prize_text = (
             f"{prize:,}"
@@ -1340,40 +1279,62 @@ async def rating(
             )
         )
 
-        score_text = fmt_points(
-            score_by_user[
-                user["id"]
+        if place <= len(ranked):
+
+            user = ranked[
+                place - 1
             ]
-        )
+
+            score = score_by_user.get(
+                user["id"],
+                0.0,
+            )
+
+            if (
+                user["id"]
+                == current_user["id"]
+            ):
+
+                shown_name = (
+                    "⚔️ "
+                    + user["full_name"]
+                )
+
+            else:
+
+                shown_name = "Скрыто"
+
+            score_text = fmt_points(
+                score
+            )
+
+        else:
+
+            # Не раскрываем,
+            # что участника на этом месте пока нет.
+            shown_name = "Скрыто"
+            score_text = "0"
 
         lines.append(
             (
-                f"{place_label} "
+                f"{place_label(place)} "
                 f"{shown_name} — "
                 f"<b>{score_text}</b> б. — "
                 f"💰 {prize_text} ₽"
             )
         )
 
-    if not ranked:
-
-        lines.append(
-            "Пока дружина пуста."
-        )
-
     lines.append("")
+    lines.append(
+        "⚔️ <b>ТВОЯ ПОЗИЦИЯ</b>"
+    )
 
     if my_place is not None:
 
         lines.append(
-            "⚔️ <b>ТВОЯ ПОЗИЦИЯ</b>"
-        )
-
-        lines.append(
             (
                 "Место: "
-                f"<b>{my_place} "
-                f"из {len(ranked)}</b>"
+                f"<b>{my_place}</b>"
             )
         )
 
