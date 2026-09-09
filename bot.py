@@ -139,7 +139,6 @@ def calc_points(
     total = 0.0
 
     for key, _, points in NORM_FIELDS:
-
         if bool(
             row.get(key)
         ):
@@ -396,10 +395,7 @@ def month_calendar_kb(
     )
 
     offset = first.weekday()
-
-    cells = (
-        [None] * offset
-    )
+    cells = [None] * offset
 
     cells += [
         date(
@@ -560,6 +556,27 @@ def get_user(
     return rows[0]
 
 
+def set_last_ui_message(
+    user_id,
+    message_id: int | None,
+):
+
+    (
+        supabase
+        .table("bot_users")
+        .update(
+            {
+                "last_ui_message_id": message_id,
+            }
+        )
+        .eq(
+            "id",
+            user_id,
+        )
+        .execute()
+    )
+
+
 def get_or_create_user(
     tg_user,
 ) -> dict:
@@ -640,6 +657,7 @@ def get_or_create_user(
             tg_user.id
             == ADMIN_TELEGRAM_ID
         ),
+        "last_ui_message_id": None,
     }
 
     created = (
@@ -660,7 +678,7 @@ def get_or_create_user(
 # =========================================================
 
 def get_or_create_day(
-    user_id: int,
+    user_id,
     norm_date: date,
 ) -> dict:
 
@@ -708,7 +726,7 @@ def get_or_create_day(
 # =========================================================
 
 def save_reminder(
-    user_id: int,
+    user_id,
     telegram_id: int,
     message_id: int,
 ):
@@ -753,20 +771,84 @@ def delete_reminder_row(
 
 
 # =========================================================
-# РЕДАКТИРОВАНИЕ СООБЩЕНИЙ
+# УПРАВЛЕНИЕ ОДНИМ СООБЩЕНИЕМ
 # =========================================================
+
+async def delete_previous_ui(
+    bot: Bot,
+    user: dict,
+):
+
+    old_message_id = user.get(
+        "last_ui_message_id"
+    )
+
+    if not old_message_id:
+        return
+
+    try:
+
+        await bot.delete_message(
+            chat_id=user[
+                "telegram_id"
+            ],
+            message_id=old_message_id,
+        )
+
+    except Exception:
+        pass
+
+    try:
+
+        set_last_ui_message(
+            user["id"],
+            None,
+        )
+
+    except Exception:
+        pass
+
+
+async def send_single_ui(
+    bot: Bot,
+    user: dict,
+    text: str,
+    reply_markup=None,
+):
+
+    await delete_previous_ui(
+        bot,
+        user,
+    )
+
+    sent = await bot.send_message(
+        chat_id=user[
+            "telegram_id"
+        ],
+        text=text,
+        reply_markup=reply_markup,
+    )
+
+    set_last_ui_message(
+        user["id"],
+        sent.message_id,
+    )
+
+    return sent
+
 
 async def safe_edit(
     callback: CallbackQuery,
     text: str,
-    reply_markup: (
-        InlineKeyboardMarkup
-        | None
-    ) = None,
+    reply_markup=None,
 ):
 
     if callback.message is None:
         return
+
+    user = get_or_create_user(
+        callback.from_user
+    )
 
     try:
 
@@ -778,22 +860,34 @@ async def safe_edit(
             )
         )
 
+        set_last_ui_message(
+            user["id"],
+            callback.message.message_id,
+        )
+
         return
 
     except Exception:
         pass
 
     try:
+
         await callback.message.delete()
+
     except Exception:
         pass
 
-    await (
+    sent = await (
         callback.message
         .answer(
             text,
             reply_markup=reply_markup,
         )
+    )
+
+    set_last_ui_message(
+        user["id"],
+        sent.message_id,
     )
 
 
@@ -866,43 +960,6 @@ async def show_day(
     )
 
 
-async def send_today_screen(
-    callback: CallbackQuery,
-):
-
-    user = get_or_create_user(
-        callback.from_user
-    )
-
-    norm_date = today()
-
-    row = get_or_create_day(
-        user["id"],
-        norm_date,
-    )
-
-    points = calc_points(
-        row
-    )
-
-    text = (
-        f"⚔️ <b>День "
-        f"{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
-        f"Набрано баллов: "
-        f"<b>{fmt_points(points)}</b>\n\n"
-        "Отмечай выполненные нормативы.\n"
-        "Каждое изменение сохраняется сразу."
-    )
-
-    await callback.message.answer(
-        text,
-        reply_markup=day_keyboard(
-            row,
-            norm_date,
-        ),
-    )
-
-
 # =========================================================
 # /START
 # =========================================================
@@ -936,13 +993,17 @@ async def start(
         "Да начнётся битва!"
     )
 
-    await message.answer(
+    await send_single_ui(
+        message.bot,
+        user,
         greeting,
-        reply_markup=menu_kb(),
+        menu_kb(),
     )
 
     try:
+
         await message.delete()
+
     except Exception:
         pass
 
@@ -962,13 +1023,60 @@ async def acknowledge_rules_update(
         "Погнали 🤝"
     )
 
+    user = get_or_create_user(
+        callback.from_user
+    )
+
+    old_message_id = (
+        callback.message.message_id
+        if callback.message
+        else None
+    )
+
     try:
+
         await callback.message.delete()
+
     except Exception:
         pass
 
-    await send_today_screen(
-        callback
+    if old_message_id:
+        try:
+            set_last_ui_message(
+                user["id"],
+                None,
+            )
+        except Exception:
+            pass
+
+    norm_date = today()
+
+    row = get_or_create_day(
+        user["id"],
+        norm_date,
+    )
+
+    points = calc_points(
+        row
+    )
+
+    text = (
+        f"⚔️ <b>День "
+        f"{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
+        f"Набрано баллов: "
+        f"<b>{fmt_points(points)}</b>\n\n"
+        "Отмечай выполненные нормативы.\n"
+        "Каждое изменение сохраняется сразу."
+    )
+
+    await send_single_ui(
+        callback.bot,
+        user,
+        text,
+        day_keyboard(
+            row,
+            norm_date,
+        ),
     )
 
 
@@ -987,6 +1095,10 @@ async def open_today_from_reminder(
         "Погнали ⚔️"
     )
 
+    user = get_or_create_user(
+        callback.from_user
+    )
+
     message_id = (
         callback.message.message_id
         if callback.message
@@ -994,20 +1106,61 @@ async def open_today_from_reminder(
     )
 
     try:
+
         await callback.message.delete()
+
     except Exception:
         pass
 
     if message_id:
+
         try:
+
             delete_reminder_row(
                 message_id
             )
+
         except Exception:
             pass
 
-    await send_today_screen(
-        callback
+    try:
+
+        set_last_ui_message(
+            user["id"],
+            None,
+        )
+
+    except Exception:
+        pass
+
+    norm_date = today()
+
+    row = get_or_create_day(
+        user["id"],
+        norm_date,
+    )
+
+    points = calc_points(
+        row
+    )
+
+    text = (
+        f"⚔️ <b>День "
+        f"{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
+        f"Набрано баллов: "
+        f"<b>{fmt_points(points)}</b>\n\n"
+        "Отмечай выполненные нормативы.\n"
+        "Каждое изменение сохраняется сразу."
+    )
+
+    await send_single_ui(
+        callback.bot,
+        user,
+        text,
+        day_keyboard(
+            row,
+            norm_date,
+        ),
     )
 
 
@@ -1028,7 +1181,9 @@ async def admin(
     ):
 
         try:
+
             await message.delete()
+
         except Exception:
             pass
 
@@ -1058,20 +1213,31 @@ async def admin(
         .execute()
     )
 
-    await message.answer(
-        (
-            "👑 <b>Админка</b>"
-            "\n\n"
-            "Участников: "
-            f"<b>{users.count or 0}</b>"
-            "\n"
-            "Заполненных дней: "
-            f"<b>{norms.count or 0}</b>"
-        )
+    user = get_or_create_user(
+        message.from_user
+    )
+
+    text = (
+        "👑 <b>Админка</b>"
+        "\n\n"
+        "Участников: "
+        f"<b>{users.count or 0}</b>"
+        "\n"
+        "Заполненных дней: "
+        f"<b>{norms.count or 0}</b>"
+    )
+
+    await send_single_ui(
+        message.bot,
+        user,
+        text,
+        menu_kb(),
     )
 
     try:
+
         await message.delete()
+
     except Exception:
         pass
 
@@ -1310,8 +1476,11 @@ async def toggle_norm(
     )
 
     if updated_rows:
+
         row = updated_rows[0]
+
     else:
+
         row[field] = new_value
 
     points = calc_points(
@@ -1439,6 +1608,7 @@ async def rating(
             user["id"]
             == current_user["id"]
         ):
+
             my_place = index
             break
 
@@ -1552,7 +1722,7 @@ async def noop(
 
 
 # =========================================================
-# УДАЛЕНИЕ ЛИШНИХ СООБЩЕНИЙ
+# УДАЛЕНИЕ ЛИШНИХ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ
 # =========================================================
 
 @router.message()
@@ -1561,7 +1731,9 @@ async def cleanup_user_messages(
 ):
 
     try:
+
         await message.delete()
+
     except Exception:
         pass
 
@@ -1577,10 +1749,7 @@ async def send_daily_reminders(
     users = (
         supabase
         .table("bot_users")
-        .select(
-            "id,"
-            "telegram_id"
-        )
+        .select("*")
         .eq(
             "is_active",
             True,
@@ -1600,6 +1769,12 @@ async def send_daily_reminders(
 
         try:
 
+            # Перед напоминанием удаляем старый экран бота.
+            await delete_previous_ui(
+                bot,
+                user,
+            )
+
             sent = await bot.send_message(
                 chat_id=telegram_id,
                 text=(
@@ -1608,6 +1783,11 @@ async def send_daily_reminders(
                     "отметь, что успел сделать сегодня ⚔️"
                 ),
                 reply_markup=reminder_kb(),
+            )
+
+            set_last_ui_message(
+                user["id"],
+                sent.message_id,
             )
 
             save_reminder(
@@ -1691,6 +1871,7 @@ async def cleanup_old_reminders(
                 .table("reminder_messages")
                 .select(
                     "id,"
+                    "user_id,"
                     "telegram_id,"
                     "message_id"
                 )
@@ -1714,6 +1895,44 @@ async def cleanup_old_reminders(
                             "message_id"
                         ],
                     )
+
+                except Exception:
+                    pass
+
+                try:
+
+                    current_user_rows = (
+                        supabase
+                        .table("bot_users")
+                        .select(
+                            "last_ui_message_id"
+                        )
+                        .eq(
+                            "id",
+                            row["user_id"],
+                        )
+                        .execute()
+                        .data
+                    )
+
+                    if current_user_rows:
+
+                        current_last = (
+                            current_user_rows[0]
+                            .get(
+                                "last_ui_message_id"
+                            )
+                        )
+
+                        if (
+                            current_last
+                            == row["message_id"]
+                        ):
+
+                            set_last_ui_message(
+                                row["user_id"],
+                                None,
+                            )
 
                 except Exception:
                     pass
