@@ -48,6 +48,18 @@ REMINDER_TTL_HOURS = int(
     os.getenv("REMINDER_TTL_HOURS") or "2"
 )
 
+# Разовое окно дозаполнения:
+# до 00:00 по Москве в ночь с 12 на 13 сентября 2026.
+REFILL_END_AT = datetime(
+    2026,
+    9,
+    13,
+    0,
+    0,
+    0,
+    tzinfo=TIMEZONE,
+)
+
 
 # =========================================================
 # SUPABASE / ROUTER
@@ -95,7 +107,25 @@ NORM_FIELDS = [
     ("academic_hour", "Академический час", 1.0),
 ]
 
-NORM_KEYS = {item[0] for item in NORM_FIELDS}
+NORM_KEYS = {
+    item[0]
+    for item in NORM_FIELDS
+}
+
+MONTH_NAMES = {
+    1: "Январь",
+    2: "Февраль",
+    3: "Март",
+    4: "Апрель",
+    5: "Май",
+    6: "Июнь",
+    7: "Июль",
+    8: "Август",
+    9: "Сентябрь",
+    10: "Октябрь",
+    11: "Ноябрь",
+    12: "Декабрь",
+}
 
 
 # =========================================================
@@ -103,7 +133,9 @@ NORM_KEYS = {item[0] for item in NORM_FIELDS}
 # =========================================================
 
 def now_local() -> datetime:
-    return datetime.now(TIMEZONE)
+    return datetime.now(
+        TIMEZONE
+    )
 
 
 def today() -> date:
@@ -111,42 +143,81 @@ def today() -> date:
 
 
 def yesterday() -> date:
-    return today() - timedelta(days=1)
-
-
-def is_allowed_date(norm_date: date) -> bool:
-    return (
-        norm_date >= COMPETITION_START
-        and norm_date in {today(), yesterday()}
+    return today() - timedelta(
+        days=1
     )
 
 
-def calc_points(row: dict) -> float:
+def refill_window_active() -> bool:
+    return now_local() < REFILL_END_AT
+
+
+def is_allowed_date(
+    norm_date: date,
+) -> bool:
+
+    if (
+        norm_date < COMPETITION_START
+        or norm_date > today()
+    ):
+        return False
+
+    if refill_window_active():
+        return True
+
+    return norm_date in {
+        today(),
+        yesterday(),
+    }
+
+
+def calc_points(
+    row: dict,
+) -> float:
+
     total = 0.0
 
     for key, _, points in NORM_FIELDS:
-        if bool(row.get(key)):
+
+        if bool(
+            row.get(key)
+        ):
             total += points
 
-    return round(total, 1)
+    return round(
+        total,
+        1,
+    )
 
 
-def fmt_points(value) -> str:
-    value = float(value or 0)
+def fmt_points(
+    value,
+) -> str:
+
+    value = float(
+        value or 0
+    )
 
     if value.is_integer():
-        return str(int(value))
+        return str(
+            int(value)
+        )
 
     return f"{value:.1f}"
 
 
-def telegram_full_name(tg_user) -> str:
+def telegram_full_name(
+    tg_user,
+) -> str:
+
     first_name = (
-        tg_user.first_name or ""
+        tg_user.first_name
+        or ""
     ).strip()
 
     last_name = (
-        tg_user.last_name or ""
+        tg_user.last_name
+        or ""
     ).strip()
 
     full_name = (
@@ -162,7 +233,10 @@ def telegram_full_name(tg_user) -> str:
     return f"Участник {tg_user.id}"
 
 
-def place_label(place: int) -> str:
+def place_label(
+    place: int,
+) -> str:
+
     if place == 1:
         return "🥇"
 
@@ -176,6 +250,7 @@ def place_label(place: int) -> str:
 
 
 def next_reminder_datetime() -> datetime:
+
     current = now_local()
 
     target = current.replace(
@@ -186,7 +261,9 @@ def next_reminder_datetime() -> datetime:
     )
 
     if current >= target:
-        target += timedelta(days=1)
+        target += timedelta(
+            days=1
+        )
 
     return target
 
@@ -196,6 +273,32 @@ def next_reminder_datetime() -> datetime:
 # =========================================================
 
 def base_menu_kb() -> InlineKeyboardMarkup:
+
+    if refill_window_active():
+
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⚔️ Заполнить текущий день",
+                        callback_data="fill_today",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="📅 Заполнить любую дату",
+                        callback_data="choose_date",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🏆 Рейтинг",
+                        callback_data="rating",
+                    )
+                ],
+            ]
+        )
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -221,6 +324,7 @@ def base_menu_kb() -> InlineKeyboardMarkup:
 
 
 def back_to_menu_kb() -> InlineKeyboardMarkup:
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -234,12 +338,27 @@ def back_to_menu_kb() -> InlineKeyboardMarkup:
 
 
 def reminder_kb() -> InlineKeyboardMarkup:
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Понял, согласен",
                     callback_data="ack_daily_reminder",
+                )
+            ]
+        ]
+    )
+
+
+def refill_notice_kb() -> InlineKeyboardMarkup:
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Понял, принял",
+                    callback_data="ack_refill_notice",
                 )
             ]
         ]
@@ -289,6 +408,135 @@ def day_keyboard(
 
     return InlineKeyboardMarkup(
         inline_keyboard=buttons
+    )
+
+
+def calendar_kb() -> InlineKeyboardMarkup:
+
+    current = today()
+
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"{MONTH_NAMES[current.month]} {current.year}",
+                callback_data="noop",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=weekday,
+                callback_data="noop",
+            )
+            for weekday in [
+                "Пн",
+                "Вт",
+                "Ср",
+                "Чт",
+                "Пт",
+                "Сб",
+                "Вс",
+            ]
+        ],
+    ]
+
+    first = date(
+        current.year,
+        current.month,
+        1,
+    )
+
+    if current.month == 12:
+        next_month = date(
+            current.year + 1,
+            1,
+            1,
+        )
+    else:
+        next_month = date(
+            current.year,
+            current.month + 1,
+            1,
+        )
+
+    last = (
+        next_month
+        - timedelta(days=1)
+    )
+
+    cells = (
+        [None] * first.weekday()
+        + [
+            date(
+                current.year,
+                current.month,
+                day,
+            )
+            for day in range(
+                1,
+                last.day + 1,
+            )
+        ]
+    )
+
+    while len(cells) % 7:
+        cells.append(
+            None
+        )
+
+    for i in range(
+        0,
+        len(cells),
+        7,
+    ):
+
+        keyboard_row = []
+
+        for day_value in cells[
+            i:i + 7
+        ]:
+
+            if (
+                day_value is None
+                or day_value < COMPETITION_START
+                or day_value > current
+            ):
+
+                keyboard_row.append(
+                    InlineKeyboardButton(
+                        text="·",
+                        callback_data="noop",
+                    )
+                )
+
+            else:
+
+                keyboard_row.append(
+                    InlineKeyboardButton(
+                        text=str(
+                            day_value.day
+                        ),
+                        callback_data=(
+                            f"date:"
+                            f"{day_value.isoformat()}"
+                        ),
+                    )
+                )
+
+        rows.append(
+            keyboard_row
+        )
+
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="⬅️ В меню",
+                callback_data="menu",
+            )
+        ]
+    )
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=rows
     )
 
 
@@ -497,6 +745,17 @@ def get_or_create_day(
 # =========================================================
 
 def base_menu_text() -> str:
+
+    if refill_window_active():
+
+        return (
+            "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
+            "До <b>00:00 по Москве</b> можно "
+            "дозаполнить нормативы за любую дату "
+            "с <b>01.09.2026</b> по сегодняшний день.\n\n"
+            "Выбирай действие:"
+        )
+
     return (
         "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
         "Заполнять нормативы можно только "
@@ -511,15 +770,8 @@ def day_text(
     points: float,
 ) -> str:
 
-    label = (
-        "Сегодня"
-        if norm_date == today()
-        else "Вчера"
-    )
-
     return (
-        f"⚔️ <b>{label} — "
-        f"{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
+        f"⚔️ <b>{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
         f"Набрано баллов: "
         f"<b>{fmt_points(points)}</b>\n\n"
         "Отмечай выполненные нормативы.\n"
@@ -528,11 +780,24 @@ def day_text(
 
 
 def reminder_text() -> str:
+
     return (
         "⏰ <b>Напоминание</b>\n\n"
-        "Не забудь заполнить нормативы за сегодня.\n\n"
-        "Сейчас можно вносить данные только "
-        "за текущий и предыдущий день."
+        "Не забудь заполнить нормативы за сегодня."
+    )
+
+
+def refill_notice_text() -> str:
+
+    return (
+        "📢 <b>Дорогие участники!</b>\n\n"
+        "По вашим просьбам даём возможность "
+        "дозаполнить метрики с "
+        "<b>01.09.2026</b> по текущий день.\n\n"
+        "Такая возможность будет доступна "
+        "<b>сейчас и до 00:00 по Москве</b>.\n\n"
+        "После полуночи снова можно будет "
+        "заполнять только текущий и предыдущий день."
     )
 
 
@@ -545,10 +810,8 @@ async def delete_tracked_message(
     user: dict,
 ):
 
-    message_id = (
-        user.get(
-            "last_ui_message_id"
-        )
+    message_id = user.get(
+        "last_ui_message_id"
     )
 
     if not message_id:
@@ -669,6 +932,49 @@ async def start(
 
 
 # =========================================================
+# РАЗОВОЕ УВЕДОМЛЕНИЕ О ДОЗАПОЛНЕНИИ
+# =========================================================
+
+@router.callback_query(
+    F.data == "ack_refill_notice"
+)
+async def ack_refill_notice(
+    callback: CallbackQuery,
+):
+
+    await callback.answer(
+        "Принято 🤝"
+    )
+
+    user = get_or_create_user(
+        callback.from_user
+    )
+
+    if callback.message:
+
+        try:
+
+            await callback.message.delete()
+
+        except Exception:
+            pass
+
+    sent = await callback.bot.send_message(
+        chat_id=user[
+            "telegram_id"
+        ],
+        text=base_menu_text(),
+        reply_markup=base_menu_kb(),
+    )
+
+    update_ui_state(
+        user["id"],
+        sent.message_id,
+        "menu",
+    )
+
+
+# =========================================================
 # МЕНЮ
 # =========================================================
 
@@ -727,7 +1033,7 @@ async def fill_today(
             row,
             norm_date,
         ),
-        "today",
+        "day",
     )
 
 
@@ -746,9 +1052,8 @@ async def fill_yesterday(
 
     norm_date = yesterday()
 
-    if (
+    if not is_allowed_date(
         norm_date
-        < COMPETITION_START
     ):
 
         await callback.answer(
@@ -781,8 +1086,121 @@ async def fill_yesterday(
             row,
             norm_date,
         ),
-        "yesterday",
+        "day",
     )
+
+
+# =========================================================
+# ВЫБОР ЛЮБОЙ ДАТЫ ДО 00:00
+# =========================================================
+
+@router.callback_query(
+    F.data == "choose_date"
+)
+async def choose_date(
+    callback: CallbackQuery,
+):
+
+    await callback.answer()
+
+    if not refill_window_active():
+
+        await callback.answer(
+            (
+                "Время дозаполнения закончилось. "
+                "Теперь доступны только сегодня и вчера."
+            ),
+            show_alert=True,
+        )
+
+        await edit_current_ui(
+            callback,
+            base_menu_text(),
+            base_menu_kb(),
+            "menu",
+        )
+
+        return
+
+    await edit_current_ui(
+        callback,
+        "📅 <b>Выбери дату</b>",
+        calendar_kb(),
+        "calendar",
+    )
+
+
+@router.callback_query(
+    F.data.startswith("date:")
+)
+async def date_selected(
+    callback: CallbackQuery,
+):
+
+    await callback.answer()
+
+    norm_date = date.fromisoformat(
+        callback.data.split(
+            ":",
+            1,
+        )[1]
+    )
+
+    if not is_allowed_date(
+        norm_date
+    ):
+
+        await callback.answer(
+            (
+                "Эту дату уже нельзя редактировать."
+            ),
+            show_alert=True,
+        )
+
+        await edit_current_ui(
+            callback,
+            base_menu_text(),
+            base_menu_kb(),
+            "menu",
+        )
+
+        return
+
+    user = get_or_create_user(
+        callback.from_user
+    )
+
+    row = get_or_create_day(
+        user["id"],
+        norm_date,
+    )
+
+    points = calc_points(
+        row
+    )
+
+    await edit_current_ui(
+        callback,
+        day_text(
+            norm_date,
+            points,
+        ),
+        day_keyboard(
+            row,
+            norm_date,
+        ),
+        "day",
+    )
+
+
+@router.callback_query(
+    F.data == "noop"
+)
+async def noop(
+    callback: CallbackQuery,
+):
+
+    await callback.answer()
 
 
 # =========================================================
@@ -826,9 +1244,7 @@ async def toggle_norm(
 
         await callback.answer(
             (
-                "Эту дату уже нельзя редактировать. "
-                "Доступны только текущий "
-                "и предыдущий день."
+                "Эту дату уже нельзя редактировать."
             ),
             show_alert=True,
         )
@@ -893,11 +1309,7 @@ async def toggle_norm(
             row,
             norm_date,
         ),
-        (
-            "today"
-            if norm_date == today()
-            else "yesterday"
-        ),
+        "day",
     )
 
 
@@ -1116,7 +1528,7 @@ async def rating(
 
 
 # =========================================================
-# КНОПКА НАПОМИНАНИЯ
+# ЕЖЕДНЕВНОЕ НАПОМИНАНИЕ
 # =========================================================
 
 @router.callback_query(
@@ -1134,7 +1546,6 @@ async def ack_daily_reminder(
         callback.from_user
     )
 
-    # Удаляем именно сообщение-напоминание
     if callback.message:
 
         try:
@@ -1144,7 +1555,6 @@ async def ack_daily_reminder(
         except Exception:
             pass
 
-    # И создаём заново базовое сообщение
     sent = await callback.bot.send_message(
         chat_id=user[
             "telegram_id"
@@ -1159,27 +1569,6 @@ async def ack_daily_reminder(
         "menu",
     )
 
-
-# =========================================================
-# УДАЛЕНИЕ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ
-# =========================================================
-
-@router.message()
-async def cleanup_user_messages(
-    message: Message,
-):
-
-    try:
-
-        await message.delete()
-
-    except Exception:
-        pass
-
-
-# =========================================================
-# ЕЖЕДНЕВНОЕ НАПОМИНАНИЕ
-# =========================================================
 
 async def send_daily_reminders(
     bot: Bot,
@@ -1199,10 +1588,8 @@ async def send_daily_reminders(
 
     for user in users:
 
-        telegram_id = (
-            user.get(
-                "telegram_id"
-            )
+        telegram_id = user.get(
+            "telegram_id"
         )
 
         if not telegram_id:
@@ -1210,20 +1597,17 @@ async def send_daily_reminders(
 
         try:
 
-            # 1. Удаляем базовое сообщение
             await delete_tracked_message(
                 bot,
                 user,
             )
 
-            # 2. Отправляем вместо него напоминание
             sent = await bot.send_message(
                 chat_id=telegram_id,
                 text=reminder_text(),
                 reply_markup=reminder_kb(),
             )
 
-            # 3. Запоминаем, что сейчас в чате напоминание
             update_ui_state(
                 user["id"],
                 sent.message_id,
@@ -1274,16 +1658,10 @@ async def reminder_scheduler(
             bot
         )
 
-        # чтобы не сработать второй раз
-        # в ту же минуту
         await asyncio.sleep(
             60
         )
 
-
-# =========================================================
-# АВТОВОЗВРАТ В БАЗОВОЕ СООБЩЕНИЕ ЧЕРЕЗ 2 ЧАСА
-# =========================================================
 
 async def reminder_expiration_scheduler(
     bot: Bot,
@@ -1332,13 +1710,11 @@ async def reminder_expiration_scheduler(
 
                 try:
 
-                    # 1. Удаляем просроченное напоминание
                     await delete_tracked_message(
                         bot,
                         user,
                     )
 
-                    # 2. Возвращаем базовое сообщение
                     sent = await bot.send_message(
                         chat_id=user[
                             "telegram_id"
@@ -1386,6 +1762,115 @@ async def reminder_expiration_scheduler(
 
 
 # =========================================================
+# ПОСЛЕ 00:00 ВОЗВРАЩАЕМ МЕНЮ В ОБЫЧНЫЙ РЕЖИМ
+# =========================================================
+
+async def refill_expiration_scheduler(
+    bot: Bot,
+):
+
+    while True:
+
+        current = now_local()
+
+        if current >= REFILL_END_AT:
+
+            try:
+
+                users = (
+                    supabase
+                    .table("bot_users")
+                    .select("*")
+                    .eq(
+                        "is_active",
+                        True,
+                    )
+                    .execute()
+                    .data
+                )
+
+                for user in users:
+
+                    try:
+
+                        if (
+                            user.get(
+                                "ui_state"
+                            )
+                            == "menu"
+                        ):
+
+                            message_id = user.get(
+                                "last_ui_message_id"
+                            )
+
+                            if message_id:
+
+                                await bot.edit_message_text(
+                                    chat_id=user[
+                                        "telegram_id"
+                                    ],
+                                    message_id=message_id,
+                                    text=base_menu_text(),
+                                    reply_markup=base_menu_kb(),
+                                )
+
+                    except Exception:
+                        pass
+
+                    await asyncio.sleep(
+                        0.03
+                    )
+
+            except Exception as exc:
+
+                logging.warning(
+                    "Refill expiration error: %s",
+                    exc,
+                )
+
+            # после полуночи достаточно один раз,
+            # дальше функция может спать долго
+            await asyncio.sleep(
+                3600
+            )
+
+        else:
+
+            seconds_left = (
+                REFILL_END_AT
+                - current
+            ).total_seconds()
+
+            await asyncio.sleep(
+                max(
+                    min(
+                        seconds_left,
+                        300,
+                    ),
+                    30,
+                )
+            )
+
+
+# =========================================================
+# УДАЛЕНИЕ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ
+# =========================================================
+
+@router.message()
+async def cleanup_user_messages(
+    message: Message,
+):
+
+    try:
+
+        await message.delete()
+
+    except Exception:
+        pass
+
+
+# =========================================================
 # START
 # =========================================================
 
@@ -1414,18 +1899,20 @@ async def main():
         router
     )
 
-    logging.info(
-        "Bot started"
-    )
-
     reminder_task = asyncio.create_task(
         reminder_scheduler(
             bot
         )
     )
 
-    expiration_task = asyncio.create_task(
+    reminder_expiration_task = asyncio.create_task(
         reminder_expiration_scheduler(
+            bot
+        )
+    )
+
+    refill_expiration_task = asyncio.create_task(
+        refill_expiration_scheduler(
             bot
         )
     )
@@ -1439,11 +1926,13 @@ async def main():
     finally:
 
         reminder_task.cancel()
-        expiration_task.cancel()
+        reminder_expiration_task.cancel()
+        refill_expiration_task.cancel()
 
         await asyncio.gather(
             reminder_task,
-            expiration_task,
+            reminder_expiration_task,
+            refill_expiration_task,
             return_exceptions=True,
         )
 
