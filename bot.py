@@ -48,18 +48,6 @@ REMINDER_TTL_HOURS = int(
     os.getenv("REMINDER_TTL_HOURS") or "2"
 )
 
-# Разовое окно дозаполнения:
-# до 00:00 по Москве в ночь с 12 на 13 сентября 2026.
-REFILL_END_AT = datetime(
-    2026,
-    9,
-    13,
-    0,
-    0,
-    0,
-    tzinfo=TIMEZONE,
-)
-
 
 # =========================================================
 # SUPABASE / ROUTER
@@ -107,25 +95,7 @@ NORM_FIELDS = [
     ("academic_hour", "Академический час", 1.0),
 ]
 
-NORM_KEYS = {
-    item[0]
-    for item in NORM_FIELDS
-}
-
-MONTH_NAMES = {
-    1: "Январь",
-    2: "Февраль",
-    3: "Март",
-    4: "Апрель",
-    5: "Май",
-    6: "Июнь",
-    7: "Июль",
-    8: "Август",
-    9: "Сентябрь",
-    10: "Октябрь",
-    11: "Ноябрь",
-    12: "Декабрь",
-}
+NORM_KEYS = {item[0] for item in NORM_FIELDS}
 
 
 # =========================================================
@@ -133,9 +103,7 @@ MONTH_NAMES = {
 # =========================================================
 
 def now_local() -> datetime:
-    return datetime.now(
-        TIMEZONE
-    )
+    return datetime.now(TIMEZONE)
 
 
 def today() -> date:
@@ -143,27 +111,12 @@ def today() -> date:
 
 
 def yesterday() -> date:
-    return today() - timedelta(
-        days=1
-    )
+    return today() - timedelta(days=1)
 
 
-def refill_window_active() -> bool:
-    return now_local() < REFILL_END_AT
-
-
-def is_allowed_date(
-    norm_date: date,
-) -> bool:
-
-    if (
-        norm_date < COMPETITION_START
-        or norm_date > today()
-    ):
+def is_allowed_date(norm_date: date) -> bool:
+    if norm_date < COMPETITION_START:
         return False
-
-    if refill_window_active():
-        return True
 
     return norm_date in {
         today(),
@@ -171,58 +124,30 @@ def is_allowed_date(
     }
 
 
-def calc_points(
-    row: dict,
-) -> float:
-
+def calc_points(row: dict) -> float:
     total = 0.0
 
     for key, _, points in NORM_FIELDS:
-
-        if bool(
-            row.get(key)
-        ):
+        if bool(row.get(key)):
             total += points
 
-    return round(
-        total,
-        1,
-    )
+    return round(total, 1)
 
 
-def fmt_points(
-    value,
-) -> str:
-
-    value = float(
-        value or 0
-    )
+def fmt_points(value) -> str:
+    value = float(value or 0)
 
     if value.is_integer():
-        return str(
-            int(value)
-        )
+        return str(int(value))
 
     return f"{value:.1f}"
 
 
-def telegram_full_name(
-    tg_user,
-) -> str:
+def telegram_full_name(tg_user) -> str:
+    first_name = (tg_user.first_name or "").strip()
+    last_name = (tg_user.last_name or "").strip()
 
-    first_name = (
-        tg_user.first_name
-        or ""
-    ).strip()
-
-    last_name = (
-        tg_user.last_name
-        or ""
-    ).strip()
-
-    full_name = (
-        f"{first_name} {last_name}"
-    ).strip()
+    full_name = f"{first_name} {last_name}".strip()
 
     if full_name:
         return full_name
@@ -233,16 +158,11 @@ def telegram_full_name(
     return f"Участник {tg_user.id}"
 
 
-def place_label(
-    place: int,
-) -> str:
-
+def place_label(place: int) -> str:
     if place == 1:
         return "🥇"
-
     if place == 2:
         return "🥈"
-
     if place == 3:
         return "🥉"
 
@@ -250,7 +170,6 @@ def place_label(
 
 
 def next_reminder_datetime() -> datetime:
-
     current = now_local()
 
     target = current.replace(
@@ -261,9 +180,7 @@ def next_reminder_datetime() -> datetime:
     )
 
     if current >= target:
-        target += timedelta(
-            days=1
-        )
+        target += timedelta(days=1)
 
     return target
 
@@ -273,32 +190,6 @@ def next_reminder_datetime() -> datetime:
 # =========================================================
 
 def base_menu_kb() -> InlineKeyboardMarkup:
-
-    if refill_window_active():
-
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="⚔️ Заполнить текущий день",
-                        callback_data="fill_today",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="📅 Заполнить любую дату",
-                        callback_data="choose_date",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="🏆 Рейтинг",
-                        callback_data="rating",
-                    )
-                ],
-            ]
-        )
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -324,7 +215,6 @@ def base_menu_kb() -> InlineKeyboardMarkup:
 
 
 def back_to_menu_kb() -> InlineKeyboardMarkup:
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -338,7 +228,6 @@ def back_to_menu_kb() -> InlineKeyboardMarkup:
 
 
 def reminder_kb() -> InlineKeyboardMarkup:
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -351,34 +240,14 @@ def reminder_kb() -> InlineKeyboardMarkup:
     )
 
 
-def refill_notice_kb() -> InlineKeyboardMarkup:
-
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Понял, принял",
-                    callback_data="ack_refill_notice",
-                )
-            ]
-        ]
-    )
-
-
 def day_keyboard(
     row: dict,
     norm_date: date,
 ) -> InlineKeyboardMarkup:
-
     buttons = []
 
     for key, label, points in NORM_FIELDS:
-
-        checked = (
-            "✅"
-            if row.get(key)
-            else "⬜"
-        )
+        checked = "✅" if row.get(key) else "⬜"
 
         buttons.append(
             [
@@ -411,151 +280,16 @@ def day_keyboard(
     )
 
 
-def calendar_kb() -> InlineKeyboardMarkup:
-
-    current = today()
-
-    rows = [
-        [
-            InlineKeyboardButton(
-                text=f"{MONTH_NAMES[current.month]} {current.year}",
-                callback_data="noop",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text=weekday,
-                callback_data="noop",
-            )
-            for weekday in [
-                "Пн",
-                "Вт",
-                "Ср",
-                "Чт",
-                "Пт",
-                "Сб",
-                "Вс",
-            ]
-        ],
-    ]
-
-    first = date(
-        current.year,
-        current.month,
-        1,
-    )
-
-    if current.month == 12:
-        next_month = date(
-            current.year + 1,
-            1,
-            1,
-        )
-    else:
-        next_month = date(
-            current.year,
-            current.month + 1,
-            1,
-        )
-
-    last = (
-        next_month
-        - timedelta(days=1)
-    )
-
-    cells = (
-        [None] * first.weekday()
-        + [
-            date(
-                current.year,
-                current.month,
-                day,
-            )
-            for day in range(
-                1,
-                last.day + 1,
-            )
-        ]
-    )
-
-    while len(cells) % 7:
-        cells.append(
-            None
-        )
-
-    for i in range(
-        0,
-        len(cells),
-        7,
-    ):
-
-        keyboard_row = []
-
-        for day_value in cells[
-            i:i + 7
-        ]:
-
-            if (
-                day_value is None
-                or day_value < COMPETITION_START
-                or day_value > current
-            ):
-
-                keyboard_row.append(
-                    InlineKeyboardButton(
-                        text="·",
-                        callback_data="noop",
-                    )
-                )
-
-            else:
-
-                keyboard_row.append(
-                    InlineKeyboardButton(
-                        text=str(
-                            day_value.day
-                        ),
-                        callback_data=(
-                            f"date:"
-                            f"{day_value.isoformat()}"
-                        ),
-                    )
-                )
-
-        rows.append(
-            keyboard_row
-        )
-
-    rows.append(
-        [
-            InlineKeyboardButton(
-                text="⬅️ В меню",
-                callback_data="menu",
-            )
-        ]
-    )
-
-    return InlineKeyboardMarkup(
-        inline_keyboard=rows
-    )
-
-
 # =========================================================
 # БАЗА — ПОЛЬЗОВАТЕЛИ
 # =========================================================
 
-def get_user(
-    telegram_id: int,
-):
-
+def get_user(telegram_id: int):
     rows = (
         supabase
         .table("bot_users")
         .select("*")
-        .eq(
-            "telegram_id",
-            telegram_id,
-        )
+        .eq("telegram_id", telegram_id)
         .execute()
         .data
     )
@@ -566,13 +300,8 @@ def get_user(
     return rows[0]
 
 
-def get_or_create_user(
-    tg_user,
-) -> dict:
-
-    existing = get_user(
-        tg_user.id
-    )
+def get_or_create_user(tg_user) -> dict:
+    existing = get_user(tg_user.id)
 
     username = (
         tg_user.username
@@ -580,54 +309,26 @@ def get_or_create_user(
         else None
     )
 
-    full_name = telegram_full_name(
-        tg_user
-    )
+    full_name = telegram_full_name(tg_user)
 
     if existing:
-
         updates = {}
 
-        if (
-            existing.get(
-                "telegram_username"
-            )
-            != username
-        ):
-            updates[
-                "telegram_username"
-            ] = username
+        if existing.get("telegram_username") != username:
+            updates["telegram_username"] = username
 
-        if (
-            existing.get(
-                "full_name"
-            )
-            != full_name
-        ):
-            updates[
-                "full_name"
-            ] = full_name
+        if existing.get("full_name") != full_name:
+            updates["full_name"] = full_name
 
-        if not existing.get(
-            "is_active",
-            True,
-        ):
-            updates[
-                "is_active"
-            ] = True
+        if not existing.get("is_active", True):
+            updates["is_active"] = True
 
         if updates:
-
             updated_rows = (
                 supabase
                 .table("bot_users")
-                .update(
-                    updates
-                )
-                .eq(
-                    "id",
-                    existing["id"],
-                )
+                .update(updates)
+                .eq("id", existing["id"])
                 .execute()
                 .data
             )
@@ -650,9 +351,7 @@ def get_or_create_user(
                 "ui_state": "menu",
                 "ui_state_updated_at": (
                     now_local()
-                    .astimezone(
-                        ZoneInfo("UTC")
-                    )
+                    .astimezone(ZoneInfo("UTC"))
                     .isoformat()
                 ),
             }
@@ -669,7 +368,6 @@ def update_ui_state(
     message_id,
     ui_state: str,
 ):
-
     (
         supabase
         .table("bot_users")
@@ -679,17 +377,12 @@ def update_ui_state(
                 "ui_state": ui_state,
                 "ui_state_updated_at": (
                     now_local()
-                    .astimezone(
-                        ZoneInfo("UTC")
-                    )
+                    .astimezone(ZoneInfo("UTC"))
                     .isoformat()
                 ),
             }
         )
-        .eq(
-            "id",
-            user_id,
-        )
+        .eq("id", user_id)
         .execute()
     )
 
@@ -702,19 +395,12 @@ def get_or_create_day(
     user_id,
     norm_date: date,
 ) -> dict:
-
     rows = (
         supabase
         .table("daily_norms")
         .select("*")
-        .eq(
-            "user_id",
-            user_id,
-        )
-        .eq(
-            "norm_date",
-            norm_date.isoformat(),
-        )
+        .eq("user_id", user_id)
+        .eq("norm_date", norm_date.isoformat())
         .execute()
         .data
     )
@@ -728,9 +414,7 @@ def get_or_create_day(
         .insert(
             {
                 "user_id": user_id,
-                "norm_date": (
-                    norm_date.isoformat()
-                ),
+                "norm_date": norm_date.isoformat(),
             }
         )
         .execute()
@@ -745,17 +429,6 @@ def get_or_create_day(
 # =========================================================
 
 def base_menu_text() -> str:
-
-    if refill_window_active():
-
-        return (
-            "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
-            "До <b>00:00 по Москве</b> можно "
-            "дозаполнить нормативы за любую дату "
-            "с <b>01.09.2026</b> по сегодняшний день.\n\n"
-            "Выбирай действие:"
-        )
-
     return (
         "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
         "Заполнять нормативы можно только "
@@ -769,9 +442,15 @@ def day_text(
     norm_date: date,
     points: float,
 ) -> str:
+    label = (
+        "Сегодня"
+        if norm_date == today()
+        else "Вчера"
+    )
 
     return (
-        f"⚔️ <b>{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
+        f"⚔️ <b>{label} — "
+        f"{norm_date.strftime('%d.%m.%Y')}</b>\n\n"
         f"Набрано баллов: "
         f"<b>{fmt_points(points)}</b>\n\n"
         "Отмечай выполненные нормативы.\n"
@@ -780,24 +459,9 @@ def day_text(
 
 
 def reminder_text() -> str:
-
     return (
         "⏰ <b>Напоминание</b>\n\n"
         "Не забудь заполнить нормативы за сегодня."
-    )
-
-
-def refill_notice_text() -> str:
-
-    return (
-        "📢 <b>Дорогие участники!</b>\n\n"
-        "По вашим просьбам даём возможность "
-        "дозаполнить метрики с "
-        "<b>01.09.2026</b> по текущий день.\n\n"
-        "Такая возможность будет доступна "
-        "<b>сейчас и до 00:00 по Москве</b>.\n\n"
-        "После полуночи снова можно будет "
-        "заполнять только текущий и предыдущий день."
     )
 
 
@@ -809,7 +473,6 @@ async def delete_tracked_message(
     bot: Bot,
     user: dict,
 ):
-
     message_id = user.get(
         "last_ui_message_id"
     )
@@ -818,14 +481,10 @@ async def delete_tracked_message(
         return
 
     try:
-
         await bot.delete_message(
-            chat_id=user[
-                "telegram_id"
-            ],
+            chat_id=user["telegram_id"],
             message_id=message_id,
         )
-
     except Exception:
         pass
 
@@ -837,16 +496,13 @@ async def send_fresh_ui(
     reply_markup,
     ui_state: str,
 ):
-
     await delete_tracked_message(
         bot,
         user,
     )
 
     sent = await bot.send_message(
-        chat_id=user[
-            "telegram_id"
-        ],
+        chat_id=user["telegram_id"],
         text=text,
         reply_markup=reply_markup,
     )
@@ -866,15 +522,12 @@ async def edit_current_ui(
     reply_markup,
     ui_state: str,
 ):
-
     user = get_or_create_user(
         callback.from_user
     )
 
     if callback.message:
-
         try:
-
             await callback.message.edit_text(
                 text,
                 reply_markup=reply_markup,
@@ -904,13 +557,8 @@ async def edit_current_ui(
 # /START
 # =========================================================
 
-@router.message(
-    CommandStart()
-)
-async def start(
-    message: Message,
-):
-
+@router.message(CommandStart())
+async def start(message: Message):
     user = get_or_create_user(
         message.from_user
     )
@@ -924,54 +572,9 @@ async def start(
     )
 
     try:
-
         await message.delete()
-
     except Exception:
         pass
-
-
-# =========================================================
-# РАЗОВОЕ УВЕДОМЛЕНИЕ О ДОЗАПОЛНЕНИИ
-# =========================================================
-
-@router.callback_query(
-    F.data == "ack_refill_notice"
-)
-async def ack_refill_notice(
-    callback: CallbackQuery,
-):
-
-    await callback.answer(
-        "Принято 🤝"
-    )
-
-    user = get_or_create_user(
-        callback.from_user
-    )
-
-    if callback.message:
-
-        try:
-
-            await callback.message.delete()
-
-        except Exception:
-            pass
-
-    sent = await callback.bot.send_message(
-        chat_id=user[
-            "telegram_id"
-        ],
-        text=base_menu_text(),
-        reply_markup=base_menu_kb(),
-    )
-
-    update_ui_state(
-        user["id"],
-        sent.message_id,
-        "menu",
-    )
 
 
 # =========================================================
@@ -981,10 +584,7 @@ async def ack_refill_notice(
 @router.callback_query(
     F.data == "menu"
 )
-async def menu(
-    callback: CallbackQuery,
-):
-
+async def menu(callback: CallbackQuery):
     await callback.answer()
 
     await edit_current_ui(
@@ -1002,10 +602,7 @@ async def menu(
 @router.callback_query(
     F.data == "fill_today"
 )
-async def fill_today(
-    callback: CallbackQuery,
-):
-
+async def fill_today(callback: CallbackQuery):
     await callback.answer()
 
     user = get_or_create_user(
@@ -1019,9 +616,7 @@ async def fill_today(
         norm_date,
     )
 
-    points = calc_points(
-        row
-    )
+    points = calc_points(row)
 
     await edit_current_ui(
         callback,
@@ -1033,7 +628,7 @@ async def fill_today(
             row,
             norm_date,
         ),
-        "day",
+        "today",
     )
 
 
@@ -1044,10 +639,7 @@ async def fill_today(
 @router.callback_query(
     F.data == "fill_yesterday"
 )
-async def fill_yesterday(
-    callback: CallbackQuery,
-):
-
+async def fill_yesterday(callback: CallbackQuery):
     await callback.answer()
 
     norm_date = yesterday()
@@ -1055,12 +647,10 @@ async def fill_yesterday(
     if not is_allowed_date(
         norm_date
     ):
-
         await callback.answer(
             "Предыдущий день недоступен",
             show_alert=True,
         )
-
         return
 
     user = get_or_create_user(
@@ -1072,9 +662,7 @@ async def fill_yesterday(
         norm_date,
     )
 
-    points = calc_points(
-        row
-    )
+    points = calc_points(row)
 
     await edit_current_ui(
         callback,
@@ -1086,121 +674,90 @@ async def fill_yesterday(
             row,
             norm_date,
         ),
-        "day",
+        "yesterday",
     )
 
 
 # =========================================================
-# ВЫБОР ЛЮБОЙ ДАТЫ ДО 00:00
+# БЛОКИРУЕМ СТАРЫЕ КНОПКИ ДОЗАПОЛНЕНИЯ
 # =========================================================
 
 @router.callback_query(
     F.data == "choose_date"
 )
-async def choose_date(
+async def choose_date_disabled(
     callback: CallbackQuery,
 ):
-
-    await callback.answer()
-
-    if not refill_window_active():
-
-        await callback.answer(
-            (
-                "Время дозаполнения закончилось. "
-                "Теперь доступны только сегодня и вчера."
-            ),
-            show_alert=True,
-        )
-
-        await edit_current_ui(
-            callback,
-            base_menu_text(),
-            base_menu_kb(),
-            "menu",
-        )
-
-        return
+    await callback.answer(
+        (
+            "Дозаполнение завершено. "
+            "Теперь доступны только сегодня и вчера."
+        ),
+        show_alert=True,
+    )
 
     await edit_current_ui(
         callback,
-        "📅 <b>Выбери дату</b>",
-        calendar_kb(),
-        "calendar",
+        base_menu_text(),
+        base_menu_kb(),
+        "menu",
     )
 
 
 @router.callback_query(
     F.data.startswith("date:")
 )
-async def date_selected(
+async def old_date_disabled(
     callback: CallbackQuery,
 ):
-
-    await callback.answer()
-
-    norm_date = date.fromisoformat(
-        callback.data.split(
-            ":",
-            1,
-        )[1]
+    await callback.answer(
+        (
+            "Эта дата больше недоступна. "
+            "Теперь доступны только сегодня и вчера."
+        ),
+        show_alert=True,
     )
 
-    if not is_allowed_date(
-        norm_date
-    ):
+    await edit_current_ui(
+        callback,
+        base_menu_text(),
+        base_menu_kb(),
+        "menu",
+    )
 
-        await callback.answer(
-            (
-                "Эту дату уже нельзя редактировать."
-            ),
-            show_alert=True,
-        )
 
-        await edit_current_ui(
-            callback,
-            base_menu_text(),
-            base_menu_kb(),
-            "menu",
-        )
-
-        return
+@router.callback_query(
+    F.data == "ack_refill_notice"
+)
+async def old_refill_notice(
+    callback: CallbackQuery,
+):
+    await callback.answer(
+        "Окно дозаполнения уже закрыто.",
+        show_alert=True,
+    )
 
     user = get_or_create_user(
         callback.from_user
     )
 
-    row = get_or_create_day(
+    if callback.message:
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+
+    sent = await callback.bot.send_message(
+        chat_id=user["telegram_id"],
+        text=base_menu_text(),
+        reply_markup=base_menu_kb(),
+    )
+
+    update_ui_state(
         user["id"],
-        norm_date,
+        sent.message_id,
+        "menu",
     )
-
-    points = calc_points(
-        row
-    )
-
-    await edit_current_ui(
-        callback,
-        day_text(
-            norm_date,
-            points,
-        ),
-        day_keyboard(
-            row,
-            norm_date,
-        ),
-        "day",
-    )
-
-
-@router.callback_query(
-    F.data == "noop"
-)
-async def noop(
-    callback: CallbackQuery,
-):
-
-    await callback.answer()
 
 
 # =========================================================
@@ -1210,10 +767,7 @@ async def noop(
 @router.callback_query(
     F.data.startswith("toggle:")
 )
-async def toggle_norm(
-    callback: CallbackQuery,
-):
-
+async def toggle_norm(callback: CallbackQuery):
     user = get_or_create_user(
         callback.from_user
     )
@@ -1226,12 +780,10 @@ async def toggle_norm(
     )
 
     if field not in NORM_KEYS:
-
         await callback.answer(
             "Неизвестный норматив",
             show_alert=True,
         )
-
         return
 
     norm_date = date.fromisoformat(
@@ -1241,10 +793,10 @@ async def toggle_norm(
     if not is_allowed_date(
         norm_date
     ):
-
         await callback.answer(
             (
-                "Эту дату уже нельзя редактировать."
+                "Эту дату уже нельзя редактировать. "
+                "Доступны только сегодня и вчера."
             ),
             show_alert=True,
         )
@@ -1284,16 +836,11 @@ async def toggle_norm(
     )
 
     if updated_rows:
-
         row = updated_rows[0]
-
     else:
-
         row[field] = new_value
 
-    points = calc_points(
-        row
-    )
+    points = calc_points(row)
 
     await callback.answer(
         "✅ Сохранено"
@@ -1309,7 +856,11 @@ async def toggle_norm(
             row,
             norm_date,
         ),
-        "day",
+        (
+            "today"
+            if norm_date == today()
+            else "yesterday"
+        ),
     )
 
 
@@ -1320,10 +871,7 @@ async def toggle_norm(
 @router.callback_query(
     F.data == "rating"
 )
-async def rating(
-    callback: CallbackQuery,
-):
-
+async def rating(callback: CallbackQuery):
     await callback.answer()
 
     current_user = get_or_create_user(
@@ -1368,21 +916,14 @@ async def rating(
     }
 
     for row in daily_rows:
+        uid = row["user_id"]
 
-        uid = row[
-            "user_id"
-        ]
-
-        score_by_user[
-            uid
-        ] = (
+        score_by_user[uid] = (
             score_by_user.get(
                 uid,
                 0.0,
             )
-            + calc_points(
-                row
-            )
+            + calc_points(row)
         )
 
     ranked = sorted(
@@ -1393,9 +934,7 @@ async def rating(
                 0.0,
             ),
             (
-                user.get(
-                    "full_name"
-                )
+                user.get("full_name")
                 or ""
             ).lower(),
         ),
@@ -1412,12 +951,10 @@ async def rating(
         ranked,
         start=1,
     ):
-
         if (
             user["id"]
             == current_user["id"]
         ):
-
             my_place = index
             break
 
@@ -1430,10 +967,7 @@ async def rating(
         1,
         11,
     ):
-
-        prize = PRIZES[
-            place
-        ]
+        prize = PRIZES[place]
 
         prize_text = (
             f"{prize:,}"
@@ -1443,10 +977,7 @@ async def rating(
             )
         )
 
-        if place <= len(
-            ranked
-        ):
-
+        if place <= len(ranked):
             user = ranked[
                 place - 1
             ]
@@ -1462,32 +993,21 @@ async def rating(
                 user["id"]
                 == current_user["id"]
             ):
-
                 shown_name = (
                     "⚔️ "
-                    + user[
-                        "full_name"
-                    ]
+                    + user["full_name"]
                 )
-
             else:
-
                 shown_name = (
                     "Скрыто"
                 )
 
-            score_text = (
-                fmt_points(
-                    score
-                )
+            score_text = fmt_points(
+                score
             )
 
         else:
-
-            shown_name = (
-                "Скрыто"
-            )
-
+            shown_name = "Скрыто"
             score_text = "0"
 
         lines.append(
@@ -1505,7 +1025,6 @@ async def rating(
     )
 
     if my_place is not None:
-
         lines.append(
             f"Место: <b>{my_place}</b>"
         )
@@ -1519,9 +1038,7 @@ async def rating(
 
     await edit_current_ui(
         callback,
-        "\n".join(
-            lines
-        ),
+        "\n".join(lines),
         back_to_menu_kb(),
         "rating",
     )
@@ -1537,7 +1054,6 @@ async def rating(
 async def ack_daily_reminder(
     callback: CallbackQuery,
 ):
-
     await callback.answer(
         "Принято 🤝"
     )
@@ -1547,18 +1063,13 @@ async def ack_daily_reminder(
     )
 
     if callback.message:
-
         try:
-
             await callback.message.delete()
-
         except Exception:
             pass
 
     sent = await callback.bot.send_message(
-        chat_id=user[
-            "telegram_id"
-        ],
+        chat_id=user["telegram_id"],
         text=base_menu_text(),
         reply_markup=base_menu_kb(),
     )
@@ -1573,7 +1084,6 @@ async def ack_daily_reminder(
 async def send_daily_reminders(
     bot: Bot,
 ):
-
     users = (
         supabase
         .table("bot_users")
@@ -1587,7 +1097,6 @@ async def send_daily_reminders(
     )
 
     for user in users:
-
         telegram_id = user.get(
             "telegram_id"
         )
@@ -1596,7 +1105,6 @@ async def send_daily_reminders(
             continue
 
         try:
-
             await delete_tracked_message(
                 bot,
                 user,
@@ -1615,7 +1123,6 @@ async def send_daily_reminders(
             )
 
         except Exception as exc:
-
             logging.warning(
                 "Reminder error for %s: %s",
                 telegram_id,
@@ -1630,9 +1137,7 @@ async def send_daily_reminders(
 async def reminder_scheduler(
     bot: Bot,
 ):
-
     while True:
-
         target = (
             next_reminder_datetime()
         )
@@ -1663,12 +1168,14 @@ async def reminder_scheduler(
         )
 
 
+# =========================================================
+# АВТОВОЗВРАТ БАЗОВОГО СООБЩЕНИЯ ЧЕРЕЗ 2 ЧАСА
+# =========================================================
+
 async def reminder_expiration_scheduler(
     bot: Bot,
 ):
-
     while True:
-
         cutoff = (
             now_local()
             - timedelta(
@@ -1685,7 +1192,6 @@ async def reminder_expiration_scheduler(
         )
 
         try:
-
             users = (
                 supabase
                 .table("bot_users")
@@ -1707,9 +1213,7 @@ async def reminder_expiration_scheduler(
             )
 
             for user in users:
-
                 try:
-
                     await delete_tracked_message(
                         bot,
                         user,
@@ -1730,7 +1234,6 @@ async def reminder_expiration_scheduler(
                     )
 
                 except Exception as exc:
-
                     logging.warning(
                         (
                             "Reminder expiration "
@@ -1747,7 +1250,6 @@ async def reminder_expiration_scheduler(
                 )
 
         except Exception as exc:
-
             logging.warning(
                 (
                     "Reminder expiration "
@@ -1762,98 +1264,6 @@ async def reminder_expiration_scheduler(
 
 
 # =========================================================
-# ПОСЛЕ 00:00 ВОЗВРАЩАЕМ МЕНЮ В ОБЫЧНЫЙ РЕЖИМ
-# =========================================================
-
-async def refill_expiration_scheduler(
-    bot: Bot,
-):
-
-    while True:
-
-        current = now_local()
-
-        if current >= REFILL_END_AT:
-
-            try:
-
-                users = (
-                    supabase
-                    .table("bot_users")
-                    .select("*")
-                    .eq(
-                        "is_active",
-                        True,
-                    )
-                    .execute()
-                    .data
-                )
-
-                for user in users:
-
-                    try:
-
-                        if (
-                            user.get(
-                                "ui_state"
-                            )
-                            == "menu"
-                        ):
-
-                            message_id = user.get(
-                                "last_ui_message_id"
-                            )
-
-                            if message_id:
-
-                                await bot.edit_message_text(
-                                    chat_id=user[
-                                        "telegram_id"
-                                    ],
-                                    message_id=message_id,
-                                    text=base_menu_text(),
-                                    reply_markup=base_menu_kb(),
-                                )
-
-                    except Exception:
-                        pass
-
-                    await asyncio.sleep(
-                        0.03
-                    )
-
-            except Exception as exc:
-
-                logging.warning(
-                    "Refill expiration error: %s",
-                    exc,
-                )
-
-            # после полуночи достаточно один раз,
-            # дальше функция может спать долго
-            await asyncio.sleep(
-                3600
-            )
-
-        else:
-
-            seconds_left = (
-                REFILL_END_AT
-                - current
-            ).total_seconds()
-
-            await asyncio.sleep(
-                max(
-                    min(
-                        seconds_left,
-                        300,
-                    ),
-                    30,
-                )
-            )
-
-
-# =========================================================
 # УДАЛЕНИЕ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ
 # =========================================================
 
@@ -1861,11 +1271,8 @@ async def refill_expiration_scheduler(
 async def cleanup_user_messages(
     message: Message,
 ):
-
     try:
-
         await message.delete()
-
     except Exception:
         pass
 
@@ -1875,7 +1282,6 @@ async def cleanup_user_messages(
 # =========================================================
 
 async def main():
-
     logging.basicConfig(
         level=logging.INFO,
         format=(
@@ -1905,40 +1311,29 @@ async def main():
         )
     )
 
-    reminder_expiration_task = asyncio.create_task(
+    expiration_task = asyncio.create_task(
         reminder_expiration_scheduler(
             bot
         )
     )
 
-    refill_expiration_task = asyncio.create_task(
-        refill_expiration_scheduler(
-            bot
-        )
-    )
-
     try:
-
         await dispatcher.start_polling(
             bot
         )
 
     finally:
-
         reminder_task.cancel()
-        reminder_expiration_task.cancel()
-        refill_expiration_task.cancel()
+        expiration_task.cancel()
 
         await asyncio.gather(
             reminder_task,
-            reminder_expiration_task,
-            refill_expiration_task,
+            expiration_task,
             return_exceptions=True,
         )
 
 
 if __name__ == "__main__":
-
     asyncio.run(
         main()
     )
