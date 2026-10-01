@@ -194,13 +194,19 @@ def base_menu_kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⚔️ Заполнить текущий день",
+                    text=(
+                        "⚔️ Заполнить текущий день — "
+                        f"{today().strftime('%d.%m')}"
+                    ),
                     callback_data="fill_today",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📜 Заполнить предыдущий день",
+                    text=(
+                        "📜 Заполнить предыдущий день — "
+                        f"{yesterday().strftime('%d.%m')}"
+                    ),
                     callback_data="fill_yesterday",
                 )
             ],
@@ -894,17 +900,20 @@ async def rating(callback: CallbackQuery):
         .data
     )
 
+    current_date = today()
+    month_start = current_date.replace(day=1)
+
     daily_rows = (
         supabase
         .table("daily_norms")
         .select("*")
         .gte(
             "norm_date",
-            COMPETITION_START.isoformat(),
+            month_start.isoformat(),
         )
         .lte(
             "norm_date",
-            today().isoformat(),
+            current_date.isoformat(),
         )
         .execute()
         .data
@@ -958,8 +967,27 @@ async def rating(callback: CallbackQuery):
             my_place = index
             break
 
+    month_names = {
+        1: "ЯНВАРЬ",
+        2: "ФЕВРАЛЬ",
+        3: "МАРТ",
+        4: "АПРЕЛЬ",
+        5: "МАЙ",
+        6: "ИЮНЬ",
+        7: "ИЮЛЬ",
+        8: "АВГУСТ",
+        9: "СЕНТЯБРЬ",
+        10: "ОКТЯБРЬ",
+        11: "НОЯБРЬ",
+        12: "ДЕКАБРЬ",
+    }
+
     lines = [
         "🏆 <b>РЕЙТИНГ КАЙФАРИКОВ</b>",
+        (
+            f"📅 {month_names[current_date.month]} "
+            f"{current_date.year}"
+        ),
         "",
     ]
 
