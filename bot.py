@@ -841,7 +841,7 @@ async def rating(callback: CallbackQuery):
     )
 
     current_date = today()
-    month_start = current_date.replace(day=1)
+    rating_start = date(2026, 10, 1)
 
     daily_rows = (
         supabase
@@ -849,7 +849,7 @@ async def rating(callback: CallbackQuery):
         .select("*")
         .gte(
             "norm_date",
-            month_start.isoformat(),
+            rating_start.isoformat(),
         )
         .lte(
             "norm_date",
@@ -907,26 +907,11 @@ async def rating(callback: CallbackQuery):
             my_place = index
             break
 
-    month_names = {
-        1: "ЯНВАРЬ",
-        2: "ФЕВРАЛЬ",
-        3: "МАРТ",
-        4: "АПРЕЛЬ",
-        5: "МАЙ",
-        6: "ИЮНЬ",
-        7: "ИЮЛЬ",
-        8: "АВГУСТ",
-        9: "СЕНТЯБРЬ",
-        10: "ОКТЯБРЬ",
-        11: "НОЯБРЬ",
-        12: "ДЕКАБРЬ",
-    }
-
     lines = [
         "🏆 <b>РЕЙТИНГ КАЙФАРИКОВ</b>",
         (
-            f"📅 {month_names[current_date.month]} "
-            f"{current_date.year}"
+            f"📅 {rating_start.strftime('%d.%m.%Y')} — "
+            f"{current_date.strftime('%d.%m.%Y')}"
         ),
         "",
     ]
