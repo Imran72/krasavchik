@@ -115,13 +115,8 @@ def yesterday() -> date:
 
 
 def is_allowed_date(norm_date: date) -> bool:
-    if norm_date < COMPETITION_START:
-        return False
-
-    return norm_date in {
-        today(),
-        yesterday(),
-    }
+    current_date = today()
+    return max(COMPETITION_START, current_date - timedelta(days=3)) <= norm_date <= current_date
 
 
 def calc_points(row: dict) -> float:
@@ -190,34 +185,23 @@ def next_reminder_datetime() -> datetime:
 # =========================================================
 
 def base_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=(
-                        "⚔️ Заполнить текущий день — "
-                        f"{today().strftime('%d.%m')}"
-                    ),
-                    callback_data="fill_today",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=(
-                        "📜 Заполнить предыдущий день — "
-                        f"{yesterday().strftime('%d.%m')}"
-                    ),
-                    callback_data="fill_yesterday",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🏆 Рейтинг",
-                    callback_data="rating",
-                )
-            ],
-        ]
-    )
+    current_date = today()
+    labels = ("Сегодня", "Вчера", "2 дня назад", "3 дня назад")
+    buttons = []
+
+    for offset, label in enumerate(labels):
+        norm_date = current_date - timedelta(days=offset)
+        if norm_date < COMPETITION_START:
+            continue
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"📅 {label} — {norm_date.strftime('%d.%m')}",
+                callback_data=f"fill_date:{norm_date.isoformat()}",
+            )
+        ])
+
+    buttons.append([InlineKeyboardButton(text="🏆 Рейтинг", callback_data="rating")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def back_to_menu_kb() -> InlineKeyboardMarkup:
@@ -438,8 +422,7 @@ def base_menu_text() -> str:
     return (
         "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
         "Заполнять нормативы можно только "
-        "за <b>текущий</b> и "
-        "<b>предыдущий</b> день.\n\n"
+        "за <b>сегодня и три предыдущих дня</b>.\n\n"
         "Выбирай действие:"
     )
 
@@ -448,10 +431,9 @@ def day_text(
     norm_date: date,
     points: float,
 ) -> str:
-    label = (
-        "Сегодня"
-        if norm_date == today()
-        else "Вчера"
+    days_ago = (today() - norm_date).days
+    label = {0: "Сегодня", 1: "Вчера", 2: "2 дня назад", 3: "3 дня назад"}.get(
+        days_ago, "Дата"
     )
 
     return (
@@ -605,83 +587,45 @@ async def menu(callback: CallbackQuery):
 # ТЕКУЩИЙ ДЕНЬ
 # =========================================================
 
-@router.callback_query(
-    F.data == "fill_today"
-)
-async def fill_today(callback: CallbackQuery):
-    await callback.answer()
-
-    user = get_or_create_user(
-        callback.from_user
-    )
-
-    norm_date = today()
-
-    row = get_or_create_day(
-        user["id"],
-        norm_date,
-    )
-
-    points = calc_points(row)
-
-    await edit_current_ui(
-        callback,
-        day_text(
-            norm_date,
-            points,
-        ),
-        day_keyboard(
-            row,
-            norm_date,
-        ),
-        "today",
-    )
-
-
-# =========================================================
-# ПРЕДЫДУЩИЙ ДЕНЬ
-# =========================================================
-
-@router.callback_query(
-    F.data == "fill_yesterday"
-)
-async def fill_yesterday(callback: CallbackQuery):
-    await callback.answer()
-
-    norm_date = yesterday()
-
-    if not is_allowed_date(
-        norm_date
-    ):
+async def open_day(callback: CallbackQuery, norm_date: date):
+    if not is_allowed_date(norm_date):
         await callback.answer(
-            "Предыдущий день недоступен",
+            "Дата недоступна. Доступны сегодня и три предыдущих дня, начиная со старта конкурса.",
             show_alert=True,
         )
+        await edit_current_ui(callback, base_menu_text(), base_menu_kb(), "menu")
         return
 
-    user = get_or_create_user(
-        callback.from_user
-    )
-
-    row = get_or_create_day(
-        user["id"],
-        norm_date,
-    )
-
-    points = calc_points(row)
-
+    await callback.answer()
+    user = get_or_create_user(callback.from_user)
+    row = get_or_create_day(user["id"], norm_date)
     await edit_current_ui(
         callback,
-        day_text(
-            norm_date,
-            points,
-        ),
-        day_keyboard(
-            row,
-            norm_date,
-        ),
-        "yesterday",
+        day_text(norm_date, calc_points(row)),
+        day_keyboard(row, norm_date),
+        f"day:{norm_date.isoformat()}",
     )
+
+
+@router.callback_query(F.data.startswith("fill_date:"))
+async def fill_date(callback: CallbackQuery):
+    try:
+        norm_date = date.fromisoformat(callback.data.split(":", 1)[1])
+    except ValueError:
+        await callback.answer("Некорректная дата", show_alert=True)
+        return
+    await open_day(callback, norm_date)
+
+
+# Совместимость с кнопками в ранее отправленных меню.
+@router.callback_query(F.data == "fill_today")
+async def fill_today(callback: CallbackQuery):
+    await open_day(callback, today())
+
+
+@router.callback_query(F.data == "fill_yesterday")
+async def fill_yesterday(callback: CallbackQuery):
+    await open_day(callback, yesterday())
 
 
 # =========================================================
@@ -697,7 +641,7 @@ async def choose_date_disabled(
     await callback.answer(
         (
             "Дозаполнение завершено. "
-            "Теперь доступны только сегодня и вчера."
+            "Теперь доступны сегодня и три предыдущих дня."
         ),
         show_alert=True,
     )
@@ -719,7 +663,7 @@ async def old_date_disabled(
     await callback.answer(
         (
             "Эта дата больше недоступна. "
-            "Теперь доступны только сегодня и вчера."
+            "Теперь доступны сегодня и три предыдущих дня."
         ),
         show_alert=True,
     )
@@ -802,7 +746,7 @@ async def toggle_norm(callback: CallbackQuery):
         await callback.answer(
             (
                 "Эту дату уже нельзя редактировать. "
-                "Доступны только сегодня и вчера."
+                "Доступны сегодня и три предыдущих дня."
             ),
             show_alert=True,
         )
@@ -862,11 +806,7 @@ async def toggle_norm(callback: CallbackQuery):
             row,
             norm_date,
         ),
-        (
-            "today"
-            if norm_date == today()
-            else "yesterday"
-        ),
+        f"day:{norm_date.isoformat()}",
     )
 
 
