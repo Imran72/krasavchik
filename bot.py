@@ -116,7 +116,7 @@ def yesterday() -> date:
 
 def is_allowed_date(norm_date: date) -> bool:
     current_date = today()
-    return max(COMPETITION_START, current_date - timedelta(days=3)) <= norm_date <= current_date
+    return max(COMPETITION_START, current_date - timedelta(days=1)) <= norm_date <= current_date
 
 
 def calc_points(row: dict) -> float:
@@ -186,7 +186,7 @@ def next_reminder_datetime() -> datetime:
 
 def base_menu_kb() -> InlineKeyboardMarkup:
     current_date = today()
-    labels = ("Сегодня", "Вчера", "2 дня назад", "3 дня назад")
+    labels = ("Сегодня", "Вчера")
     buttons = []
 
     for offset, label in enumerate(labels):
@@ -422,7 +422,7 @@ def base_menu_text() -> str:
     return (
         "⚔️ <b>ЛИГА КРАСАВЧИКОВ</b>\n\n"
         "Заполнять нормативы можно только "
-        "за <b>сегодня и три предыдущих дня</b>.\n\n"
+        "за <b>сегодня и вчера</b>.\n\n"
         "Выбирай действие:"
     )
 
@@ -432,7 +432,7 @@ def day_text(
     points: float,
 ) -> str:
     days_ago = (today() - norm_date).days
-    label = {0: "Сегодня", 1: "Вчера", 2: "2 дня назад", 3: "3 дня назад"}.get(
+    label = {0: "Сегодня", 1: "Вчера"}.get(
         days_ago, "Дата"
     )
 
@@ -590,7 +590,7 @@ async def menu(callback: CallbackQuery):
 async def open_day(callback: CallbackQuery, norm_date: date):
     if not is_allowed_date(norm_date):
         await callback.answer(
-            "Дата недоступна. Доступны сегодня и три предыдущих дня, начиная со старта конкурса.",
+            "Дата недоступна. Доступны сегодня и вчера, начиная со старта конкурса.",
             show_alert=True,
         )
         await edit_current_ui(callback, base_menu_text(), base_menu_kb(), "menu")
@@ -641,7 +641,7 @@ async def choose_date_disabled(
     await callback.answer(
         (
             "Дозаполнение завершено. "
-            "Теперь доступны сегодня и три предыдущих дня."
+            "Теперь доступны сегодня и вчера."
         ),
         show_alert=True,
     )
@@ -663,7 +663,7 @@ async def old_date_disabled(
     await callback.answer(
         (
             "Эта дата больше недоступна. "
-            "Теперь доступны сегодня и три предыдущих дня."
+            "Теперь доступны сегодня и вчера."
         ),
         show_alert=True,
     )
@@ -746,7 +746,7 @@ async def toggle_norm(callback: CallbackQuery):
         await callback.answer(
             (
                 "Эту дату уже нельзя редактировать. "
-                "Доступны сегодня и три предыдущих дня."
+                "Доступны сегодня и вчера."
             ),
             show_alert=True,
         )
@@ -841,7 +841,7 @@ async def rating(callback: CallbackQuery):
     )
 
     current_date = today()
-    rating_start = date(2026, 10, 1)
+    rating_start = current_date.replace(day=1)
 
     daily_rows = (
         supabase
